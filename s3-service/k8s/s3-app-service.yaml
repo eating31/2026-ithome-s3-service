@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: s3-app-service
+spec:
+  # 💡 1. Service 類型：NodePort 允許我們從本地端存取 Minikube 叢集
+  type: NodePort
+
+  # 💡 2. 標籤選擇器：將流量路由給帶有 app: s3-service 貼紙的 Pods
+  selector:
+    app: my-app
+
+  ports:
+  - name: http
+    port: 8080        # Service 內部的 ClusterPort
+    targetPort: 8080  # 映射到 Pod 容器內部的 Port
+    nodePort: 30080   # 暴露給宿主機本地端存取的對外 Port (30000-32767)

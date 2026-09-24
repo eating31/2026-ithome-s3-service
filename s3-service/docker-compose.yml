@@ -1,0 +1,58 @@
+version: '3.8'
+
+networks:
+  monitoring-net:
+    driver: bridge
+
+services:
+  # 1. 微服務應用容器
+  s3-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: my-app:v1
+    container_name: s3-app
+    ports:
+      - "8080:8080"
+    environment:
+      # docker-compose 會自動讀取，或使用下方 shell 環境變數注入：
+      #   export AWS_ACCESS_KEY_ID=your_ak
+      #   export AWS_SECRET_ACCESS_KEY=your_sk
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION:ap-southeast-2}
+      - S3_BUCKET=${S3_BUCKET:iron-netty}
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'      # 限制最多使用 1.5 核 CPU
+          memory: 512M      # 限制容器實體記憶體最多 512MB
+    networks:
+      - monitoring-net
+    
+
+  # 2. Prometheus 時序資料庫容器
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - monitoring-net
+    depends_on:
+      - s3-app
+
+  # 3. Grafana 視覺化儀表板容器
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin # 設定預設管理員密碼為 admin
+    networks:
+      - monitoring-net
+    depends_on:
+      - prometheus

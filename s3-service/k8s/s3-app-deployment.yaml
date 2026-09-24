@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: s3-app-deployment
+  labels:
+    app: s3-service
+spec:
+  # 💡 1. 宣告副本數：開 3 個 Pod 實現單機多節點高可用 (HA)
+  replicas: 3
+  # 💡 2. 標籤選擇器：Deployment 透過貼紙 (Label) 管理 Pod
+  selector:
+    matchLabels:
+      app: my-app
+  # 💡 3. Pod 範本 (Template)：定義每個 Pod 裡面要裝什麼容器
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+      - name: s3-service-container
+        image: my-app:latest
+
+        # 💡 Day25  Readiness Probe (就緒探針)
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8080
+          initialDelaySeconds: 40   # 容器啟動 40 秒後開始首次檢查（Spring Boot 冷啟動約 30s）
+          periodSeconds: 5          # 每 5 秒檢查一次
+          timeoutSeconds: 5         # 等待回應最多 5 秒（預設 1 秒在高負載下太短）
+          failureThreshold: 5       # 連續失敗 5 次才判定未就緒
+
+        # 💡 Day25 Liveness Probe (存活探針)
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8080
+          initialDelaySeconds: 60   # 容器啟動 60 秒後開始首次檢查（給足啟動緩衝）
+          periodSeconds: 10         # 每 10 秒檢查一次
+          timeoutSeconds: 5         # 等待回應最多 5 秒
+          failureThreshold: 3       # 連續失敗 3 次則判定死亡並重啟
+
+        # 💡 強制使用本地 Minikube 鏡像 (不從 Docker Hub 拉取)
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+
+        # 💡 4. 從 ConfigMap 注入通用設定 (AWS_REGION、S3_BUCKET、SEMAPHORE_PERMITS)
+        envFrom:
+        - configMapRef:
+            name: s3-app-config
+
+        # 💡 5. 從 Secret 注入敏感金鑰，絕對不可寫死明文！
+        # 建立 Secret 指令：
+        #   kubectl create secret generic aws-credentials \
+        #     --from-literal=aws-access-key-id=YOUR_AK \
+        #     --from-literal=aws-secret-access-key=YOUR_SK
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-credentials
+              key: aws-secret-access-key
+
+        # 💡 6. 掛載 PVC 磁碟至專用 Log 目錄
+        # ⚠️ 千萬不能掛在 /app 根目錄！會遮蔽 app.jar 導致 CrashLoopBackOff！
+        volumeMounts:
+        - name: log-persistent-storage
+          mountPath: /app/logs
+
+        # 💡 7. 資源配額硬體限制 (Resource Limits)
+        resources:
+          requests:
+            cpu: "200m"       # 保留 0.2 核 CPU
+            memory: "256Mi"   # 保留 256MB 記憶體
+          limits:
+            cpu: "400m"       # 上限 0.4 核 CPU
+            memory: "512Mi"   # 上限 512MB 記憶體
+
+      # 💡 8. 宣告 Volumes 來源對接 PVC
+      volumes:
+      - name: log-persistent-storage
+        persistentVolumeClaim:
+          claimName: s3-log-pvc

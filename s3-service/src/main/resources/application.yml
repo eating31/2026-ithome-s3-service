@@ -1,0 +1,91 @@
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+logging:
+  file:
+    name: /app/logs/app.log   # 輸出 Log 到檔案，讓 PVC 持久化掛載生效
+
+spring: 
+  application: 
+    name: s3-async-service
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+s3:
+  bucket: ${S3_BUCKET:iron-netty}
+  region: ${AWS_REGION:ap-southeast-2}
+  semaphore-permits: ${SEMAPHORE_PERMITS:50}
+  upload:
+    max-concurrency: ${S3_UPLOAD_MAX_CONCURRENCY:50}
+  list:
+    max-concurrency: ${S3_LIST_MAX_CONCURRENCY:1000}
+
+management: 
+  endpoints: 
+    web: 
+      exposure: 
+        include: "health,info,prometheus" # 開放 prometheus 端點 
+  endpoint:
+    health:
+      probes:
+        enabled: true # 開啟 /actuator/health/liveness 與 /actuator/health/readiness
+  metrics: 
+    tags: 
+      application: ${spring.application.name}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      s3PutCircuitBreaker:
+        # 滑動視窗類型：計數型，統計最近 N 次呼叫
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 20
+
+        # 觸發跳閘前的最少呼叫次數（不足此數不計算失敗率）
+        minimumNumberOfCalls: 10
+
+        # 失敗率閾值：10 次中失敗 5 次（50%）即跳閘
+        failureRateThreshold: 50
+
+        # 慢呼叫閾值：超過 2s 視為慢呼叫，慢呼叫率超過 60% 也會跳閘
+        slowCallRateThreshold: 80
+        slowCallDurationThreshold: 15s
+
+        # OPEN 狀態維持時間，10s 後自動轉為 HALF_OPEN 試探
+        waitDurationInOpenState: 15s
+
+        # HALF_OPEN 狀態放行的試探請求數
+        permittedNumberOfCallsInHalfOpenState: 3
+
+        # 自動從 OPEN 轉為 HALF_OPEN，不需要手動觸發
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+
+        # 只將「遠端依賴/網路異常」納入失敗率統計
+        recordExceptions:
+          - software.amazon.awssdk.core.exception.SdkException
+          - java.util.concurrent.TimeoutException
+          - java.lang.RuntimeException
+
+        # 忽略本地參數錯誤，避免前端惡意發送壞請求打爆保險絲
+        ignoreExceptions:
+          - java.lang.IllegalArgumentException
+          - java.lang.NullPointerException
+
+      s3ListCircuitBreaker:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 10
+        failureRateThreshold: 50
+        slowCallRateThreshold: 80
+        slowCallDurationThreshold: 15s
+        waitDurationInOpenState: 15s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - software.amazon.awssdk.core.exception.SdkException
+          - java.util.concurrent.TimeoutException
+          - java.lang.RuntimeException
+        ignoreExceptions:
+          - java.lang.IllegalArgumentException
+          - java.lang.NullPointerException

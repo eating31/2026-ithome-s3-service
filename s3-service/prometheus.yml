@@ -1,0 +1,10 @@
+global: 
+  scrape_interval: 5s # 每 5 秒抓取一次指標數據 
+  evaluation_interval: 5s 
+
+scrape_configs: 
+  - job_name: 's3-microservice-job' 
+    metrics_path: '/actuator/prometheus' # 指定 Actuator 端點 
+    static_configs: 
+      #- targets: ['s3-app:8080']  # 利用 Docker Compose 內部 DNS！直接填容器服務名稱「s3-app」
+       - targets: ['192.168.49.2:30080'] # 記得替換成自己的 minikube ip

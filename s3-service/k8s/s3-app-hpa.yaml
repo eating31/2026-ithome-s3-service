@@ -1,0 +1,18 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: s3-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: s3-app-deployment
+  minReplicas: 3   # 平時保持 3 個 Pod 低功耗
+  maxReplicas: 6  # 流量海嘯時最多自動擴容到 10 個 Pod
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50 # CPU &gt; 50% 即觸發擴容

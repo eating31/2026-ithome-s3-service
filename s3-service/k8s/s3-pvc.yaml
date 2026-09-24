@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: s3-log-pvc
+  labels:
+    app: s3-service
+spec:
+  accessModes:
+    - ReadWriteOnce   # 允許單一 Node 進行讀寫
+  resources:
+    requests:
+      storage: 5Gi    # 宣告申請 5GB 磁碟空間

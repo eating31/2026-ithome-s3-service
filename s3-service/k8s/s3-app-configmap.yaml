@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: s3-app-config
+  labels:
+    app: s3-service
+data:
+  AWS_REGION: "ap-southeast-2"
+  S3_BUCKET: "iron-netty"
+  SEMAPHORE_PERMITS: "50"
+  SPRING_PROFILES_ACTIVE: "prod"
