@@ -52,7 +52,7 @@ jobs:
         # 先把 registry output 存成 env，才能在 SSH script 裡使用
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       with:
-        host: ${{ secrets.EC2_HOST }}      # EC2 Public IP，建議放 Secret 而非寫死
+        host: 100.57.94.146   # EC2 Public IP，建議放 Secret 而非寫死
         username: ubuntu
         key: ${{ secrets.EC2_SSH_KEY }}
         envs: ECR_REGISTRY,ECR_REPOSITORY  # 把上面宣告的 env 傳進 SSH script
