@@ -22,7 +22,7 @@ public class S3Controller {
 
     public S3Controller(
             S3Service s3Service,
-            @org.springframework.beans.factory.annotation.Value("${s3.bucket:ithome-iron}") String bucketName,
+            @org.springframework.beans.factory.annotation.Value("${s3.bucket:iron-netty}") String bucketName,
             @org.springframework.beans.factory.annotation.Value("${s3.upload.max-concurrency:50}") int maxUploadConcurrency) {
         this.s3Service = s3Service;
         this.bucketName = bucketName;

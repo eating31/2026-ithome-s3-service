@@ -1,4 +1,4 @@
-name: Deploy S3 Microservice to K8s
+name: Deploy S3 Microservice to EC2
 
 on:
   push:
@@ -46,22 +46,31 @@ jobs:
         docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -f s3-service/Dockerfile s3-service
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-    - name: Automated Remote Deployment to EC2 via SSH
+    - name: 7. Deploy to EC2 via SSH
       uses: appleboy/ssh-action@v1.0.0
+      env:
+        # 先把 registry output 存成 env，才能在 SSH script 裡使用
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       with:
-        host: 100.57.94.146 
+        host: ${{ secrets.EC2_HOST }}      # EC2 Public IP，建議放 Secret 而非寫死
         username: ubuntu
         key: ${{ secrets.EC2_SSH_KEY }}
+        envs: ECR_REGISTRY,ECR_REPOSITORY  # 把上面宣告的 env 傳進 SSH script
         script: |
-          # 1. 依靠 EC2 綁定的 IAM Role 自動登入 ECR
-          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+          # 1. 依靠 EC2 綁定的 IAM Role 自動登入 ECR（不需要 AK/SK）
+          aws ecr get-login-password --region us-east-1 \
+            | docker login --username AWS --password-stdin $ECR_REGISTRY
 
-          # 2. 拉取 AWS ECR 最新的 Docker Image
-          docker pull ${{ steps.login-ecr.outputs.registry }}/s3-app-service:latest
+          # 2. 拉取最新 image
+          docker pull $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-          # 3. 滾動重啟容器並注入 S3 環境變數
+          # 3. 停掉舊容器（不存在時不報錯）、啟動新容器
           docker stop s3-app || true
           docker rm s3-app || true
-          docker run -d -p 8080:8080 --name s3-app --restart always  -e AWS_ACCESS_KEY_ID="${{ secrets.S3_AK }}"  -e AWS_SECRET_ACCESS_KEY="${{ secrets.S3_SK }}"  -e AWS_REGION="us-east-1"   -e S3_BUCKET_NAME="my-s3-bucket"       ${{ steps.login-ecr.outputs.registry }}/s3-app-service:latest
-        
-
+          docker run -d \
+            -p 8080:8080 \
+            --name s3-app \
+            --restart always \
+            -e AWS_ACCESS_KEY_ID="${{ secrets.S3_AK }}" \
+            -e AWS_SECRET_ACCESS_KEY="${{ secrets.S3_SK }}" \
+            $ECR_REGISTRY/$ECR_REPOSITORY:latest
