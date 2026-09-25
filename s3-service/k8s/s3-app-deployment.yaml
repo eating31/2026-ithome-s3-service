@@ -17,18 +17,25 @@ spec:
       labels:
         app: my-app
     spec:
+      # 💡 Day29：從 ECR 拉 image 需要 imagePullSecrets
+      imagePullSecrets:
+      - name: ecr-secret
+
       containers:
       - name: s3-service-container
-        image: my-app:latest
+        # 💡 Day29：ECR image（CI/CD 自動更新這行的 tag）
+        # 本地測試時改回 image: my-app:latest 並移除 imagePullSecrets
+        image: 154993632692.dkr.ecr.us-east-1.amazonaws.com/2026ithome/s3-service:be4f4bb79ca8c9abea8870eff8e1672e41cda69c
+        imagePullPolicy: Always   # 使用 ECR 時必須 Always，確保每次都拉最新 tag
 
-        # 💡 Day25  Readiness Probe (就緒探針)
+        # 💡 Day25 Readiness Probe (就緒探針)
         readinessProbe:
           httpGet:
             path: /actuator/health/readiness
             port: 8080
           initialDelaySeconds: 40   # 容器啟動 40 秒後開始首次檢查（Spring Boot 冷啟動約 30s）
           periodSeconds: 5          # 每 5 秒檢查一次
-          timeoutSeconds: 5         # 等待回應最多 5 秒（預設 1 秒在高負載下太短）
+          timeoutSeconds: 5         # 等待回應最多 5 秒
           failureThreshold: 5       # 連續失敗 5 次才判定未就緒
 
         # 💡 Day25 Liveness Probe (存活探針)
@@ -41,18 +48,16 @@ spec:
           timeoutSeconds: 5         # 等待回應最多 5 秒
           failureThreshold: 3       # 連續失敗 3 次則判定死亡並重啟
 
-        # 💡 強制使用本地 Minikube 鏡像 (不從 Docker Hub 拉取)
-        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
           name: http
 
-        # 💡 4. 從 ConfigMap 注入通用設定 (AWS_REGION、S3_BUCKET、SEMAPHORE_PERMITS)
+        # 💡 4. 從 ConfigMap 批次注入通用設定 (AWS_REGION、S3_BUCKET、SEMAPHORE_PERMITS)
         envFrom:
         - configMapRef:
             name: s3-app-config
 
-        # 💡 5. 從 Secret 注入敏感金鑰，絕對不可寫死明文！
+        # 💡 5. 從 Secret 逐條注入敏感金鑰，絕對不可寫死明文！
         # 建立 Secret 指令：
         #   kubectl create secret generic aws-credentials \
         #     --from-literal=aws-access-key-id=YOUR_AK \
