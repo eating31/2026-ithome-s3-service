@@ -23,27 +23,45 @@ jobs:
         cache: maven
 
     - name: 3. Build & Package (skip tests - no test cases defined)
-      # 如果之後補了測試，把 -DskipTests 拿掉改回 mvn test && mvn package -DskipTests
+      # 如果之後補了測試，把 -DskipTests 拿掉
       run: mvn package -DskipTests
-      working-directory: s3-service  # ← Dockerfile 和 pom.xml 都在這個子目錄
+      working-directory: s3-service
 
     - name: 4. Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v2
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1  # ECR 所在的 Region
+        aws-region: us-east-1
 
     - name: 5. Login to AWS ECR
       id: login-ecr
       uses: aws-actions/amazon-ecr-login@v1
 
-    - name: 6. Build & Push Docker Image to ECR
+    - name: 6. Build & Push Docker Image to ECR (latest)
       env:
         ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ github.sha }}  # 使用 Git Commit SHA 作為唯一版號
       run: |
-        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f s3-service/Dockerfile s3-service
-        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+        # 固定用 latest tag 覆蓋，避免 ECR 儲存空間累積收費
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest -f s3-service/Dockerfile s3-service
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+    - name: Automated Remote Deployment to EC2 via SSH
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: 100.57.94.146 
+        username: ubuntu
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          # 1. 依靠 EC2 綁定的 IAM Role 自動登入 ECR
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+
+          # 2. 拉取 AWS ECR 最新的 Docker Image
+          docker pull ${{ steps.login-ecr.outputs.registry }}/s3-app-service:latest
+
+          # 3. 滾動重啟容器並注入 S3 環境變數
+          docker stop s3-app || true
+          docker rm s3-app || true
+          docker run -d -p 8080:8080 --name s3-app --restart always  -e AWS_ACCESS_KEY_ID="${{ secrets.S3_AK }}"  -e AWS_SECRET_ACCESS_KEY="${{ secrets.S3_SK }}"  -e AWS_REGION="us-east-1"   -e S3_BUCKET_NAME="my-s3-bucket"       ${{ steps.login-ecr.outputs.registry }}/s3-app-service:latest
+        
 
